@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>מסלולים ואטרקציות בחו"ל - בן פלג | Ben Peleg's Travel & Route Planner</title>
+  
+  <!-- Google Fonts: Heebo & Rubik -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800&family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+
+  <!-- App Custom Styles -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="dark-theme">
+
+  <!-- Main Header & Navigation Bar -->
+  <header class="app-header">
+    <div class="logo-area">
+      <div class="logo-icon">
+        <i class="fa-solid fa-compass fa-spin-pulse" style="--fa-animation-duration: 12s;"></i>
+      </div>
+      <div class="logo-text">
+        <h1>בן פלג <span>| תכנון מסלולים ואטרקציות</span></h1>
+        <p class="subtitle">איתור אטרקציות, מסעדות, קינוחים וקניות ברדיוס מותאם אישית</p>
+      </div>
+    </div>
+
+    <!-- Quick Stats & Actions -->
+    <div class="header-actions">
+      <div class="mode-toggle" id="themeToggleBtn" title="החלף מצב תצוגה (כהה/בהיר)">
+        <i class="fa-solid fa-moon"></i>
+      </div>
+      <button class="btn btn-outline" id="importExportBtn">
+        <i class="fa-solid fa-map-location-dot"></i> ייבוא / ייצוא לגוגל מפות
+      </button>
+      <button class="btn btn-primary" id="clearRouteBtn">
+        <i class="fa-solid fa-trash-can"></i> ניקוי מסלול
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Layout Container -->
+  <div class="app-container">
+    
+    <!-- Sidebar: Route Builder & Attraction Filters -->
+    <aside class="sidebar">
+      
+      <!-- Tab Navigation -->
+      <nav class="sidebar-tabs">
+        <button class="tab-btn active" data-tab="tab-search">
+          <i class="fa-solid fa-magnifying-glass"></i> חיפוש ונקודות
+        </button>
+        <button class="tab-btn" data-tab="tab-categories">
+          <i class="fa-solid fa-sliders"></i> סינון אטרקציות <span class="badge" id="filterCountBadge">7</span>
+        </button>
+        <button class="tab-btn" data-tab="tab-itinerary">
+          <i class="fa-solid fa-route"></i> המסלול שלי <span class="badge badge-accent" id="waypointsCountBadge">0</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-content">
+        
+        <!-- Tab 1: Search & Radius Controls -->
+        <section class="tab-pane active" id="tab-search">
+          <div class="card">
+            <h3><i class="fa-solid fa-location-dot"></i> איתור מקום / נקודת פתיחה</h3>
+            <div class="search-box">
+              <i class="fa-solid fa-search search-icon"></i>
+              <input type="text" id="searchInput" placeholder="חפש עיר, מקום או כתובת (למשל: פריז, לונדון, קוליסאום...)" autocomplete="off">
+              <button id="searchBtn" class="btn-icon" title="חפש"><i class="fa-solid fa-arrow-left"></i></button>
+            </div>
+            <div class="search-results-dropdown" id="searchResults"></div>
+
+            <div class="preset-cities">
+              <span class="preset-label">ערים פופולריות:</span>
+              <div class="preset-tags">
+                <button class="tag-btn" data-city="Paris">פריז 🇫🇷</button>
+                <button class="tag-btn" data-city="London">לונדון 🇬🇧</button>
+                <button class="tag-btn" data-city="Rome">רומא 🇮🇹</button>
+                <button class="tag-btn" data-city="Barcelona">ברצלונה 🇪🇸</button>
+                <button class="tag-btn" data-city="New York">ניו יורק 🇺🇸</button>
+                <button class="tag-btn" data-city="Tokyo">טוקיו 🇯🇵</button>
+                <button class="tag-btn" data-city="Amsterdam">אמסטרדם 🇳🇱</button>
+                <button class="tag-btn" data-city="Prague">פראג 🇨🇿</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Global & Route Buffer Radius Control -->
+          <div class="card">
+            <div class="card-header-flex">
+              <h3><i class="fa-solid fa-circle-nodes"></i> רדיוס חיפוש מסביב למסלול</h3>
+              <span class="radius-value-display" id="globalRadiusDisplay">2.0 ק"מ</span>
+            </div>
+            <div class="range-slider-container">
+              <input type="range" id="globalRadiusSlider" min="0.2" max="25" step="0.1" value="2">
+              <div class="range-markers">
+                <span>200 מ'</span>
+                <span>5 ק"מ</span>
+                <span>15 ק"מ</span>
+                <span>25 ק"מ</span>
+              </div>
+            </div>
+            <p class="help-text">
+              <i class="fa-solid fa-circle-info"></i> לחץ על נקודה מסוימת במפה או ברשימה כדי לקבוע רדיוס נפרד רק עבורה!
+            </p>
+          </div>
+
+          <!-- Quick Instructions -->
+          <div class="card card-accent">
+            <h4><i class="fa-solid fa-lightbulb"></i> איך מרכיבים מסלול עבור בן?</h4>
+            <ol class="instructions-list">
+              <li>לחץ על המפה או חפש מקום כדי להוסיף נקודת עצירה.</li>
+              <li>כוון את רדיוס החיפוש הכללי או שנה רדיוס לנקודה ספציפית.</li>
+              <li>סמן את התיבות בטאב <strong>סינון אטרקציות</strong> כדי לגלות מסעדות, קינוחים, קניונים ועוד.</li>
+              <li>ייצא את המסלול ישירות ל-<strong>Google Maps</strong> בסיום!</li>
+            </ol>
+          </div>
+        </section>
+
+        <!-- Tab 2: Category Filter Selector -->
+        <section class="tab-pane" id="tab-categories">
+          <div class="card">
+            <h3><i class="fa-solid fa-filter"></i> מה תרצה למצוא במסלול?</h3>
+            <p class="section-desc">בחר את סוגי האטרקציות שיוצגו ברדיוס הנבחר מסביב למסלול:</p>
+
+            <div class="category-grid">
+              
+              <!-- Attractions -->
+              <label class="category-card active" data-cat="attractions">
+                <input type="checkbox" checked value="attractions">
+                <div class="cat-icon cat-attractions"><i class="fa-solid fa-landmark"></i></div>
+                <div class="cat-info">
+                  <span class="cat-title">אטרקציות ומוזיאונים</span>
+                  <span class="cat-desc">אתרים היסטוריים, מוזיאונים ונקודות חובה</span>
+                </div>
+              </label>
+
+              <!-- Restaurants -->
+              <label class="category-card active" data-cat="restaurants">
+                <input type="checkbox" checked value="restaurants">
+                <div class="cat-icon cat-restaurants"><i class="fa-solid fa-utensils"></i></div>
+                <div class="cat-info">
+                  <span class="cat-title">מסעדות וקולינריה</span>
+                  <span class="cat-desc">מסעדות שף, אוכל רחוב, שווקי אוכל</span>
+                </div>
+              </label>
+
+              <!-- Desserts -->
+              <label class="category-card active" data-cat="desserts">
+                <input type="checkbox" checked value="desserts">
+                <div class="cat-icon cat-desserts"><i class="fa-solid fa-cookie-bite"></i></div>
+                <div class="cat-info">
+                  <span class="cat-title">קינוחים ומאפיות</span>
+                  <span class="cat-desc">פטיסרי, גלידריות, בתי קפה וקינוחים שווים</span>
+                </div>
+              </label>
+
+              <!-- Shopping Malls & Outlets -->
+              <label class="category-card active" data-cat="shopping">
+                <input type="checkbox" checked value="shopping">
+                <div class="cat-icon cat-shopping"><i class="fa-solid fa-bag-shopping"></i></div>
+                <div class="cat-info">
+                  <span class="cat-title">קניונים ומרכזי קניות</span>
+                  <span class="cat-desc">קניונים מקורים, רחובות שופצינג ואאוטלטים</span>
+                </div>
+              </label>
+
+              <!-- Nature & Viewpoints -->
+              <label class="category-card active" data-cat="nature">
+                <input type="checkbox" checked value="nature">
+                <div class="cat-icon cat-nature"><i class="fa-solid fa-tree"></i></div>
+                <div class="cat-info">
+                  <span class="cat-title">טבע, פארקים ותצפיות</span>
+                  <span class="cat-desc">גנים בוטניים, גשרים, פארקים ותצפיות נוף</span>
+                </div>
+              </label>
+
+              <!-- Nightlife -->
+              <label class="category-card active" data-cat="nightlife">
+                <input type="checkbox" checked value="nightlife">
+                <div class="cat-icon cat-nightlife"><i class="fa-solid fa-martini-glass-citrus"></i></div>
+                <div class="cat-info">
+                  <span class="cat-title">חיי לילה ופאבים</span>
+                  <span class="cat-desc">בר קוקטיילים, רופטופים ופופאפים ללילה</span>
+                </div>
+              </label>
+
+              <!-- Hidden Gems -->
+              <label class="category-card active" data-cat="gems">
+                <input type="checkbox" checked value="gems">
+                <div class="cat-icon cat-gems"><i class="fa-solid fa-gem"></i></div>
+                <div class="cat-info">
+                  <span class="cat-title">פנינים נסתרות</span>
+                  <span class="cat-desc">פינות חמד סודיות, סמטאות וחוויות מקומיות</span>
+                </div>
+              </label>
+
+            </div>
+
+            <div class="category-actions">
+              <button class="btn btn-small" id="selectAllCategories">סמן הכל</button>
+              <button class="btn btn-small btn-outline" id="clearAllCategories">נקה הכל</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Tab 3: Itinerary List & Custom Waypoint Radius Control -->
+        <section class="tab-pane" id="tab-itinerary">
+          <div class="card">
+            <div class="card-header-flex">
+              <h3><i class="fa-solid fa-location-crosshairs"></i> נקודות עצירה במסלול</h3>
+              <button class="btn btn-small btn-accent" id="addCustomWaypointBtn">
+                <i class="fa-solid fa-plus"></i> הוסף נקודה במפה
+              </button>
+            </div>
+
+            <div id="waypointsList" class="waypoints-list">
+              <div class="empty-state">
+                <i class="fa-solid fa-map-pin"></i>
+                <p>עדיין לא הוספת נקודות במסלול.</p>
+                <span>לחץ על המפה או חפש יעד כדי להתחיל לבנות את המסלול של בן!</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Total Route Summary -->
+          <div class="card card-summary">
+            <h3><i class="fa-solid fa-chart-pie"></i> סיכום המסלול</h3>
+            <div class="summary-stats">
+              <div class="stat-item">
+                <span class="stat-num" id="statWaypointsCount">0</span>
+                <span class="stat-label">תחנות מסלול</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-num" id="statDistance">0 ק"מ</span>
+                <span class="stat-label">אורך משוער</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-num" id="statAttractionsFound">0</span>
+                <span class="stat-label">אטרקציות נמצאו</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </aside>
+
+    <!-- Map & Floating Attraction Drawer Container -->
+    <main class="map-area">
+      
+      <!-- Interactive Leaflet Map -->
+      <div id="map"></div>
+
+      <!-- Map Overlay Controls -->
+      <div class="map-floating-bar">
+        <div class="map-mode-pills">
+          <button class="pill-btn active" id="btnClickToAddMode">
+            <i class="fa-solid fa-plus"></i> לחץ על המפה להוספת נקודה
+          </button>
+          <div class="radius-badge-floating">
+            <span>רדיוס פעיל: </span>
+            <strong id="floatingRadiusText">2.0 ק"מ</strong>
+          </div>
+        </div>
+
+        <div class="map-quick-tools">
+          <button class="map-tool-btn" id="recenterMapBtn" title="מרכז מפה למסלול">
+            <i class="fa-solid fa-crosshairs"></i>
+          </button>
+          <button class="map-tool-btn" id="toggleTileLayerBtn" title="שנה סגנון מפה (כהה/לוויין/רגיל)">
+            <i class="fa-solid fa-layer-group"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Bottom / Side Results Panel for Attractions Found Along Route -->
+      <div class="attractions-results-drawer" id="attractionsDrawer">
+        <div class="drawer-header">
+          <div class="drawer-title">
+            <i class="fa-solid fa-sparkles"></i>
+            <h2>תוצאות ואטרקציות ברדיוס המסלול (<span id="resultsCount">0</span>)</h2>
+          </div>
+          <div class="drawer-controls">
+            <select id="sortAttractionsSelect" class="sort-select">
+              <option value="distance">מיון לפי: מרחק מהמסלול</option>
+              <option value="rating">מיון לפי: דירוג (הגבוה ביותר)</option>
+              <option value="category">מיון לפי: קטגוריה</option>
+            </select>
+            <button class="drawer-toggle-btn" id="toggleDrawerBtn" title="פתח/סגור תפריט תוצאות">
+              <i class="fa-solid fa-chevron-down"></i>
+            </button>
+          </div>
+        </div>
+
+        <div class="drawer-body" id="attractionsGrid">
+          <!-- Attraction Cards will be dynamically inserted here -->
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- Google Maps Import / Export Modal -->
+  <div class="modal-overlay" id="googleMapsModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3><i class="fa-solid fa-map-marked-alt"></i> ייבוא וייצוא מסלולים מול Google Maps</h3>
+        <button class="close-modal-btn" id="closeModalBtn">&times;</button>
+      </div>
+      <div class="modal-body">
+        
+        <!-- Section A: Export to Google Maps -->
+        <div class="modal-section">
+          <h4><i class="fa-solid fa-arrow-up-right-from-square"></i> ייצוא המסלול של בן לגוגל מפות</h4>
+          <p>תוכל לפתוח את כל תחנות המסלול כאינטגרציה ישירה באפליקציית Google Maps או להוריד קובץ KML/GPX:</p>
+          <div class="modal-actions-grid">
+            <button class="btn btn-primary" id="exportToGmapsUrlBtn">
+              <i class="fa-solid fa-diamond-turn-right"></i> פתח ניווט ב-Google Maps
+            </button>
+            <button class="btn btn-outline" id="exportGpxBtn">
+              <i class="fa-solid fa-file-code"></i> הורד קובץ GPX לגרמין/מפות
+            </button>
+            <button class="btn btn-outline" id="exportKmlBtn">
+              <i class="fa-solid fa-earth-americas"></i> הורד קובץ KML (גוגל מיי מפס)
+            </button>
+          </div>
+        </div>
+
+        <hr class="modal-divider">
+
+        <!-- Section B: Import from Google Maps -->
+        <div class="modal-section">
+          <h4><i class="fa-solid fa-file-import"></i> ייבוא מסלול מגוגל מפות</h4>
+          <p>הדבק קישור מסלול מ-Google Maps או העלה קובץ KML/GPX שיוצא מגוגל:</p>
+          
+          <div class="import-box">
+            <label for="gmapsUrlInput">הדבק קישור Google Maps Directions או שיתוף:</label>
+            <div class="input-with-btn">
+              <input type="text" id="gmapsUrlInput" placeholder="https://www.google.com/maps/dir/... או https://maps.app.goo.gl/...">
+              <button class="btn btn-accent" id="parseGmapsUrlBtn">פלח קישור</button>
+            </div>
+          </div>
+
+          <div class="file-upload-box">
+            <label for="gpxFileInput" class="file-drop-zone">
+              <i class="fa-solid fa-cloud-arrow-up"></i>
+              <span>לחץ להעלאת קובץ GPX / KML מגוגל מפות</span>
+              <input type="file" id="gpxFileInput" accept=".gpx,.kml,.json" hidden>
+            </label>
+          </div>
+        </div>
+
+        <hr class="modal-divider">
+
+        <!-- Section C: Local Save and Device Sharing -->
+        <div class="modal-section">
+          <h4><i class="fa-solid fa-floppy-disk"></i> שמירה מקומית ושיתוף בין מכשירים</h4>
+          <p>המסלול נשמר אוטומטית בדפדפן. להעברה לטלפון או למחשב אחר, הורד קובץ JSON וייבא אותו שם.</p>
+          <div class="modal-actions-grid">
+            <button class="btn btn-primary" id="exportPlanBtn">
+              <i class="fa-solid fa-file-export"></i> הורד מסלול לשיתוף
+            </button>
+            <label for="planFileInput" class="btn btn-outline share-file-label">
+              <i class="fa-solid fa-file-import"></i> ייבא מסלול שמור
+              <input type="file" id="planFileInput" accept=".json,application/json" hidden>
+            </label>
+          </div>
+          <span class="save-status" id="saveStatus" aria-live="polite">נשמר מקומית בדפדפן</span>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Specific Waypoint Radius Edit Modal / Popup -->
+  <div class="modal-overlay" id="waypointRadiusModal">
+    <div class="modal-card modal-small">
+      <div class="modal-header">
+        <h3><i class="fa-solid fa-sliders"></i> שינוי רדיוס ייחודי לנקודה</h3>
+        <button class="close-modal-btn" id="closeWaypointModalBtn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p>נקודה נבחרת: <strong id="selectedWaypointName">שם הנקודה</strong></p>
+        
+        <div class="range-slider-container">
+          <div class="card-header-flex" style="margin-bottom: 0.5rem;">
+            <span>רדיוס חיפוש ספציפי:</span>
+            <strong id="specificRadiusDisplay">2.0 ק"מ</strong>
+          </div>
+          <input type="range" id="specificRadiusSlider" min="0.1" max="30" step="0.1" value="2">
+        </div>
+
+        <div class="modal-actions-flex">
+          <button class="btn btn-primary" id="saveWaypointRadiusBtn">שמור רדיוס נקודה</button>
+          <button class="btn btn-outline" id="resetWaypointRadiusBtn">אפס לרדיוס הכללי</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- JavaScript Libraries -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Turf.js for spatial calculations -->
+  <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
+
+  <!-- Application Logic -->
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
