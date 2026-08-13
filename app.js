@@ -15,6 +15,8 @@ document.addEventListener('DOMContentLoaded', () => {
     activeTileLayer: 'dark', // 'dark' or 'light'
     selectedWaypointForRadius: null, // Track waypoint being edited
     attractionsFound: [],    // Computed list of matching attractions
+    liveAttractions: [],     // Places loaded live from OpenStreetMap
+    liveSearchToken: 0,
     isClickToAddActive: true
   };
 
@@ -25,6 +27,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let radiusCirclesLayerGroup;
   let attractionsMarkersLayerGroup;
   let tileLayers = {};
+  let liveSearchDebounce;
 
   // --------------------------------------------------------------------------
   // DOM ELEMENTS
@@ -98,6 +101,19 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!loadSavedPlan()) {
       // Load initial default destination: Paris route demo for Ben
       addPresetDestination('Paris', 48.8566, 2.3522);
+    }
+  }
+
+  async function refreshLiveAttractions() {
+    const searchToken = ++state.liveSearchToken;
+    if (state.waypoints.length === 0) {
+      state.liveAttractions = [];
+      return;
+    }
+    const liveResults = await GEOSERVICES.searchNearbyAttractions(state.waypoints);
+    if (searchToken === state.liveSearchToken) {
+      state.liveAttractions = liveResults;
+      filterAndRenderAttractions();
     }
   }
 
@@ -198,6 +214,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
       renderMapElements();
       filterAndRenderAttractions();
+      clearTimeout(liveSearchDebounce);
+      liveSearchDebounce = setTimeout(refreshLiveAttractions, 500);
     });
 
     // Search Input & Suggestions
@@ -291,9 +309,11 @@ document.addEventListener('DOMContentLoaded', () => {
     clearRouteBtn.addEventListener('click', () => {
       if (confirm('האם נרצה למחוק את כל הנקודות במסלול של בן?')) {
         state.waypoints = [];
+        state.liveAttractions = [];
         renderMapElements();
         renderWaypointsList();
         filterAndRenderAttractions();
+        refreshLiveAttractions();
       }
     });
 
@@ -427,6 +447,7 @@ document.addEventListener('DOMContentLoaded', () => {
       renderMapElements();
       renderWaypointsList();
       filterAndRenderAttractions();
+      refreshLiveAttractions();
       return true;
     } catch (error) {
       localStorage.removeItem(STORAGE_KEY);
@@ -505,6 +526,7 @@ document.addEventListener('DOMContentLoaded', () => {
     renderWaypointsList();
     filterAndRenderAttractions();
     savePlan();
+    refreshLiveAttractions();
   }
 
   function removeWaypoint(id) {
@@ -513,6 +535,7 @@ document.addEventListener('DOMContentLoaded', () => {
     renderWaypointsList();
     filterAndRenderAttractions();
     savePlan();
+    refreshLiveAttractions();
   }
 
   function openWaypointRadiusModal(wp) {
@@ -664,7 +687,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    // Filter ATTRACTIONS_DATABASE
+    // Filter the curated database and merge live places from OpenStreetMap.
     const results = [];
 
     ATTRACTIONS_DATABASE.forEach(attr => {
@@ -689,6 +712,24 @@ document.addEventListener('DOMContentLoaded', () => {
           ...attr,
           distKm: minDistanceKm
         });
+      }
+    });
+
+    const knownNames = new Set(results.map(attr => attr.name.toLowerCase()));
+    state.liveAttractions.forEach(attr => {
+      if (!state.selectedCategories.has(attr.category) || knownNames.has(attr.name.toLowerCase())) return;
+
+      let minDistanceKm = Infinity;
+      let isWithinRadius = false;
+      state.waypoints.forEach(wp => {
+        const distKm = getDistanceKm(wp.lat, wp.lng, attr.lat, attr.lng);
+        minDistanceKm = Math.min(minDistanceKm, distKm);
+        if (distKm <= wp.radius) isWithinRadius = true;
+      });
+
+      if (isWithinRadius) {
+        results.push({ ...attr, distKm: minDistanceKm });
+        knownNames.add(attr.name.toLowerCase());
       }
     });
 
@@ -833,9 +874,13 @@ document.addEventListener('DOMContentLoaded', () => {
           <span class="attr-category-badge" style="background:${catColors[attr.category] || '#6366f1'}">
             ${catLabels[attr.category] || attr.category}
           </span>
-          <span class="attr-rating-badge">
-            <i class="fa-solid fa-star"></i> ${attr.rating}
-          </span>
+          ${attr.rating ? `
+            <span class="attr-rating-badge">
+              <i class="fa-solid fa-star"></i> ${attr.rating}
+            </span>
+          ` : `
+            <span class="attr-rating-badge">חי מהאינטרנט</span>
+          `}
         </div>
         <div class="attr-content">
           <h3 class="attr-name">${attr.name}</h3>

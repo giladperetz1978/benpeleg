@@ -544,5 +544,84 @@ const GEOSERVICES = {
       console.warn('Geocoding search failed:', e);
       return [];
     }
+  },
+
+  // Search real nearby places from OpenStreetMap without exposing an API key.
+  searchNearbyAttractions: async function(waypoints) {
+    if (!Array.isArray(waypoints) || waypoints.length === 0) return [];
+
+    const radiusMeters = Math.min(
+      10000,
+      Math.max(...waypoints.map(wp => Number(wp.radius) * 1000 || 2000))
+    );
+    const tagFilters = [
+      '[tourism~"attraction|museum|gallery|viewpoint|zoo|theme_park"]',
+      '[amenity~"restaurant|cafe|bar|ice_cream|fast_food"]',
+      '[shop~"mall|department_store|outlet"]',
+      '[leisure~"park|nature_reserve"]'
+    ];
+    const queries = waypoints.flatMap(wp => tagFilters.map(filter =>
+      `[out:json][timeout:15];nwr(around:${radiusMeters},${wp.lat},${wp.lng})${filter};out center tags;`
+    ));
+
+    const endpoints = [
+      'https://overpass.kumi.systems/api/interpreter',
+      'https://overpass-api.de/api/interpreter'
+    ];
+
+    try {
+      const elements = [];
+      for (const query of queries) {
+        let response;
+        for (const endpoint of endpoints) {
+          response = await fetch(`${endpoint}?data=${encodeURIComponent(query)}`);
+          if (response.ok) break;
+        }
+        if (response?.ok) {
+          const data = await response.json();
+          elements.push(...data.elements);
+        }
+      }
+      return elements
+        .map(element => {
+          const tags = element.tags || {};
+          const lat = element.lat ?? element.center?.lat;
+          const lng = element.lon ?? element.center?.lon;
+          if (!tags.name || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+          const category = this.getCategory(tags);
+          if (!category) return null;
+          return {
+            id: `osm-${element.type}-${element.id}`,
+            name: tags.name,
+            city: tags['addr:city'] || '',
+            lat,
+            lng,
+            category,
+            rating: null,
+            reviewsCount: 0,
+            price: tags.price_range || 'לא צוין',
+            img: 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=600&q=80',
+            desc: tags.description || tags.cuisine || 'מקום שנמצא בחיפוש החי של OpenStreetMap.',
+            tips: 'מומלץ לבדוק שעות פתיחה ודירוגים לפני ההגעה.',
+            bookingUrl: tags.website || tags.contact?.website || '',
+            gmapsUrl: `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`,
+            source: 'OpenStreetMap'
+          };
+        })
+        .filter(Boolean);
+    } catch (error) {
+      console.warn('Live attraction search failed:', error);
+      return [];
+    }
+  },
+
+  getCategory: function(tags) {
+    if (['mall', 'department_store', 'outlet'].includes(tags.shop)) return 'shopping';
+    if (['park', 'nature_reserve'].includes(tags.leisure)) return 'nature';
+    if (['attraction', 'museum', 'gallery', 'viewpoint', 'zoo', 'theme_park'].includes(tags.tourism)) return 'attractions';
+    if (tags.amenity === 'ice_cream' || tags.amenity === 'cafe') return 'desserts';
+    if (tags.amenity === 'bar') return 'nightlife';
+    if (['restaurant', 'fast_food'].includes(tags.amenity)) return 'restaurants';
+    return null;
   }
 };
