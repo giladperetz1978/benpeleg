@@ -20,6 +20,17 @@ document.addEventListener('DOMContentLoaded', () => {
     isClickToAddActive: true
   };
 
+  const cityPresets = {
+    Paris: { lat: 48.8566, lng: 2.3522 },
+    London: { lat: 51.5074, lng: -0.1278 },
+    Rome: { lat: 41.9028, lng: 12.4964 },
+    Barcelona: { lat: 41.3851, lng: 2.1734 },
+    'New York': { lat: 40.7128, lng: -74.0060 },
+    Tokyo: { lat: 35.6762, lng: 139.6503 },
+    Amsterdam: { lat: 52.3676, lng: 4.9041 },
+    Prague: { lat: 50.0755, lng: 14.4378 }
+  };
+
   // Map Instance and Layer Groups
   let map;
   let waypointsLayerGroup;
@@ -248,6 +259,13 @@ document.addEventListener('DOMContentLoaded', () => {
     presetTagBtns.forEach(btn => {
       btn.addEventListener('click', () => {
         const cityName = btn.dataset.city;
+        const preset = cityPresets[cityName];
+
+        if (preset) {
+          addPresetDestination(cityName, preset.lat, preset.lng);
+          return;
+        }
+
         const match = ATTRACTIONS_DATABASE.find(a => a.city.toLowerCase() === cityName.toLowerCase());
         if (match) {
           addPresetDestination(cityName, match.lat, match.lng);
@@ -503,7 +521,9 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function addPresetDestination(cityName, lat, lng) {
-    state.waypoints = []; // Fresh start for preset city
+    state.waypoints = [];
+    state.liveAttractions = [];
+    localStorage.removeItem(STORAGE_KEY);
     addWaypoint({ name: `${cityName} - מרכז`, lat, lng, radius: state.globalRadiusKm });
     map.setView([lat, lng], 13);
   }
@@ -621,9 +641,10 @@ document.addEventListener('DOMContentLoaded', () => {
         radius: wp.radius * 1000, // meters
         color: wp.hasCustomRadius ? '#f59e0b' : '#10b981',
         fillColor: wp.hasCustomRadius ? '#f59e0b' : '#10b981',
-        fillOpacity: 0.12,
-        weight: 1.5,
-        dashArray: wp.hasCustomRadius ? '4,4' : null
+        fillOpacity: 0.18,
+        opacity: 0.9,
+        weight: 2.5,
+        dashArray: wp.hasCustomRadius ? '6,6' : '2,8'
       });
 
       circle.on('click', () => openWaypointRadiusModal(wp));

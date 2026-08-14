@@ -551,15 +551,17 @@ const GEOSERVICES = {
     if (!Array.isArray(waypoints) || waypoints.length === 0) return [];
 
     const radiusMeters = Math.min(
-      10000,
-      Math.max(...waypoints.map(wp => Number(wp.radius) * 1000 || 2000))
+      15000,
+      Math.max(2000, ...waypoints.map(wp => Number(wp.radius) * 1000 || 2000))
     );
+
     const tagFilters = [
       '[tourism~"attraction|museum|gallery|viewpoint|zoo|theme_park"]',
       '[amenity~"restaurant|cafe|bar|ice_cream|fast_food"]',
       '[shop~"mall|department_store|outlet"]',
       '[leisure~"park|nature_reserve"]'
     ];
+
     const queries = waypoints.flatMap(wp => tagFilters.map(filter =>
       `[out:json][timeout:15];nwr(around:${radiusMeters},${wp.lat},${wp.lng})${filter};out center tags;`
     ));
@@ -569,27 +571,63 @@ const GEOSERVICES = {
       'https://overpass-api.de/api/interpreter'
     ];
 
+    const fetchOverpass = async (endpoint, query) => {
+      const body = `data=${encodeURIComponent(query)}`;
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          'Accept': 'application/json'
+        },
+        body
+      });
+
+      if (!response.ok) {
+        const fallback = await fetch(`${endpoint}?data=${encodeURIComponent(query)}`, {
+          method: 'GET',
+          headers: { 'Accept': 'application/json' }
+        });
+        if (fallback.ok) return fallback;
+        return null;
+      }
+
+      return response;
+    };
+
     try {
+      const seen = new Set();
       const elements = [];
+
       for (const query of queries) {
-        let response;
+        let response = null;
         for (const endpoint of endpoints) {
-          response = await fetch(`${endpoint}?data=${encodeURIComponent(query)}`);
-          if (response.ok) break;
+          response = await fetchOverpass(endpoint, query);
+          if (response?.ok) break;
         }
-        if (response?.ok) {
-          const data = await response.json();
-          elements.push(...data.elements);
+        if (!response?.ok) continue;
+
+        const data = await response.json();
+        if (Array.isArray(data.elements)) {
+          data.elements.forEach(element => {
+            const key = `${element.type}:${element.id}`;
+            if (!seen.has(key)) {
+              seen.add(key);
+              elements.push(element);
+            }
+          });
         }
       }
+
       return elements
         .map(element => {
           const tags = element.tags || {};
           const lat = element.lat ?? element.center?.lat;
           const lng = element.lon ?? element.center?.lon;
           if (!tags.name || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
           const category = this.getCategory(tags);
           if (!category) return null;
+
           return {
             id: `osm-${element.type}-${element.id}`,
             name: tags.name,
