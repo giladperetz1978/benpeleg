@@ -12,7 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
     waypoints: [],          // Array of { id, name, lat, lng, radius (in km) }
     globalRadiusKm: 2.0,    // Default search radius along route / waypoints in km
     selectedCategories: new Set(['attractions', 'restaurants', 'desserts', 'shopping', 'nature', 'nightlife', 'gems']),
-    activeTileLayer: 'dark', // 'dark' or 'light'
+    activeTileLayer: 'light',
     selectedWaypointForRadius: null, // Track waypoint being edited
     attractionsFound: [],    // Computed list of matching attractions
     liveAttractions: [],     // Places loaded live from OpenStreetMap
@@ -39,13 +39,13 @@ document.addEventListener('DOMContentLoaded', () => {
   let attractionsMarkersLayerGroup;
   let tileLayers = {};
   let liveSearchDebounce;
+  let locationSearchToken = 0;
 
   // --------------------------------------------------------------------------
   // DOM ELEMENTS
   // --------------------------------------------------------------------------
   const sidebarTabs = document.querySelectorAll('.tab-btn');
   const tabPanes = document.querySelectorAll('.tab-pane');
-  const themeToggleBtn = document.getElementById('themeToggleBtn');
   
   const searchInput = document.getElementById('searchInput');
   const searchBtn = document.getElementById('searchBtn');
@@ -74,7 +74,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const clearRouteBtn = document.getElementById('clearRouteBtn');
   const recenterMapBtn = document.getElementById('recenterMapBtn');
-  const toggleTileLayerBtn = document.getElementById('toggleTileLayerBtn');
   const addCustomWaypointBtn = document.getElementById('addCustomWaypointBtn');
   const btnClickToAddMode = document.getElementById('btnClickToAddMode');
 
@@ -119,12 +118,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const searchToken = ++state.liveSearchToken;
     if (state.waypoints.length === 0) {
       state.liveAttractions = [];
+      filterAndRenderAttractions();
       return;
     }
-    const liveResults = await GEOSERVICES.searchNearbyAttractions(state.waypoints);
-    if (searchToken === state.liveSearchToken) {
-      state.liveAttractions = liveResults;
-      filterAndRenderAttractions();
+    try {
+      const liveResults = await GEOSERVICES.searchNearbyAttractions(state.waypoints);
+      if (searchToken === state.liveSearchToken) {
+        state.liveAttractions = liveResults;
+        filterAndRenderAttractions();
+      }
+    } catch (error) {
+      console.warn('Live attraction refresh failed:', error);
     }
   }
 
@@ -140,17 +144,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     L.control.zoom({ position: 'topleft' }).addTo(map);
 
-    // Map Tile Layers
-    tileLayers.dark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      maxZoom: 19,
-      subdomains: 'abcd'
-    });
-
+    // Map Tile Layer (Clean Light Map)
     tileLayers.light = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19
     });
 
-    tileLayers.dark.addTo(map);
+    tileLayers.light.addTo(map);
 
     // Create Layer Groups
     radiusCirclesLayerGroup = L.layerGroup().addTo(map);
@@ -192,23 +191,6 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     });
 
-    // Theme Toggle (Dark / Light)
-    themeToggleBtn.addEventListener('click', () => {
-      document.body.classList.toggle('light-theme');
-      document.body.classList.toggle('dark-theme');
-      
-      const isLight = document.body.classList.contains('light-theme');
-      themeToggleBtn.innerHTML = isLight ? '<i class="fa-solid fa-sun"></i>' : '<i class="fa-solid fa-moon"></i>';
-
-      map.removeLayer(tileLayers[state.activeTileLayer]);
-      state.activeTileLayer = isLight ? 'light' : 'dark';
-      tileLayers[state.activeTileLayer].addTo(map);
-    });
-
-    toggleTileLayerBtn.addEventListener('click', () => {
-      themeToggleBtn.click();
-    });
-
     // Global Radius Slider
     globalRadiusSlider.addEventListener('input', (e) => {
       const val = parseFloat(e.target.value);
@@ -239,9 +221,10 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
+      const requestToken = ++locationSearchToken;
       searchDebounce = setTimeout(async () => {
         const results = await GEOSERVICES.searchLocation(query);
-        renderSearchResults(results);
+        if (requestToken === locationSearchToken) renderSearchResults(results);
       }, 350);
     });
 
@@ -249,7 +232,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const query = searchInput.value.trim();
       if (query) {
         const results = await GEOSERVICES.searchLocation(query);
-        if (results.length > 0) {
+        if (results.length > 0 && query === searchInput.value.trim()) {
           selectSearchResult(results[0]);
         }
       }
@@ -478,17 +461,17 @@ document.addEventListener('DOMContentLoaded', () => {
   // --------------------------------------------------------------------------
   function renderSearchResults(results) {
     if (!results || results.length === 0) {
-      searchResultsDropdown.innerHTML = '<div class="search-result-item">לא נמצאו תוצאות matching.</div>';
+      searchResultsDropdown.innerHTML = '<div class="search-result-item">לא נמצאו תוצאות.</div>';
       searchResultsDropdown.classList.add('show');
       return;
     }
 
     searchResultsDropdown.innerHTML = results.map(r => `
-      <div class="search-result-item" data-lat="${r.lat}" data-lng="${r.lng}" data-name="${r.name}">
+      <div class="search-result-item" data-lat="${r.lat}" data-lng="${r.lng}" data-name="${escapeHtml(r.name)}">
         <i class="fa-solid fa-location-dot"></i>
         <div>
-          <strong>${r.name}</strong>
-          <div style="font-size:0.73rem; color:var(--text-muted);">${r.fullName}</div>
+          <strong>${escapeHtml(r.name)}</strong>
+          <div class="search-result-detail">${escapeHtml(r.fullName)}</div>
         </div>
       </div>
     `).join('');
@@ -542,6 +525,23 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     state.waypoints.push(newWp);
+    renderMapElements();
+    renderWaypointsList();
+    filterAndRenderAttractions();
+    savePlan();
+    refreshLiveAttractions();
+  }
+
+  function replaceWaypoints(points) {
+    state.waypoints = points.map((wp, index) => ({
+      id: 'wp_' + Date.now() + '_' + index + '_' + Math.random().toString(36).substr(2, 4),
+      name: wp.name,
+      lat: Number(wp.lat),
+      lng: Number(wp.lng),
+      radius: Number(wp.radius) || state.globalRadiusKm,
+      hasCustomRadius: false
+    }));
+    state.liveAttractions = [];
     renderMapElements();
     renderWaypointsList();
     filterAndRenderAttractions();
@@ -1037,6 +1037,16 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, character => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#039;'
+    }[character]));
+  }
+
   function downloadBlob(content, filename, contentType) {
     const blob = new Blob([content], { type: contentType });
     const url = URL.createObjectURL(blob);
@@ -1059,16 +1069,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (coordsMatch) {
       const pairs = url.match(/(-?\d+\.\d+),(-?\d+\.\d+)/g);
       if (pairs && pairs.length > 0) {
-        state.waypoints = [];
-        pairs.forEach((p, idx) => {
+        replaceWaypoints(pairs.map((p, idx) => {
           const [lat, lng] = p.split(',').map(Number);
-          addWaypoint({
-            name: `תחנה מגוגל מפות ${idx + 1}`,
-            lat,
-            lng,
-            radius: state.globalRadiusKm
-          });
-        });
+          return { name: `תחנה מגוגל מפות ${idx + 1}`, lat, lng };
+        }));
         googleMapsModal.classList.remove('active');
         alert(`נקלטו בהצלחה ${pairs.length} נקודות מגוגל מפות!`);
         return;
@@ -1091,27 +1095,19 @@ document.addEventListener('DOMContentLoaded', () => {
       const kmlCoordMatches = [...content.matchAll(/<coordinates>\s*(-?\d+\.\d+),(-?\d+\.\d+)/g)];
 
       if (latLonMatches.length > 0) {
-        state.waypoints = [];
-        latLonMatches.forEach((m, idx) => {
-          addWaypoint({
-            name: `נקודת GPX ${idx + 1}`,
-            lat: parseFloat(m[1]),
-            lng: parseFloat(m[2]),
-            radius: state.globalRadiusKm
-          });
-        });
+        replaceWaypoints(latLonMatches.map((m, idx) => ({
+          name: `נקודת GPX ${idx + 1}`,
+          lat: parseFloat(m[1]),
+          lng: parseFloat(m[2])
+        })));
         googleMapsModal.classList.remove('active');
         alert(`ייבוא GPX הושלם! נטענו ${latLonMatches.length} נקודות.`);
       } else if (kmlCoordMatches.length > 0) {
-        state.waypoints = [];
-        kmlCoordMatches.forEach((m, idx) => {
-          addWaypoint({
-            name: `נקודת KML ${idx + 1}`,
-            lat: parseFloat(m[2]),
-            lng: parseFloat(m[1]),
-            radius: state.globalRadiusKm
-          });
-        });
+        replaceWaypoints(kmlCoordMatches.map((m, idx) => ({
+          name: `נקודת KML ${idx + 1}`,
+          lat: parseFloat(m[2]),
+          lng: parseFloat(m[1])
+        })));
         googleMapsModal.classList.remove('active');
         alert(`ייבוא KML הושלם! נטענו ${kmlCoordMatches.length} נקודות.`);
       } else {
